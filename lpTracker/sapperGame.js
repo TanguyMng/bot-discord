@@ -20,3 +20,5 @@ async function decompte(channel_id) {
     }
     
 }
+
+export default decompte ;
