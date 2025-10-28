@@ -1,4 +1,4 @@
-import { updateData, getData } from '../database\bddFunction.js';
+import { updateData, getData } from '../database/bddFunction.js';
 
 async function decompte(channel_id) {
     try{
