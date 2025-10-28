@@ -5,6 +5,7 @@ import { Client, Collection, Events, GatewayIntentBits, MessageFlags } from 'dis
 import dotenv from 'dotenv';
 import http from 'http';
 import trackingLp from './lpTracker/lptracker.js'; // Import du fichier secondaire
+import decompte from './lpTracker/sapperGame.js';
 import { pathToFileURL } from 'node:url';
 dotenv.config();
 
@@ -17,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 const __dirname = path.resolve();
 
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,], });
 
 client.commands = new Collection();
 const foldersPath = path.join(__dirname, 'commands');
@@ -73,6 +74,25 @@ const commandFolders = fs.readdirSync(foldersPath);
 			}
 		}
 	});
+
+	client.on("messageCreate", async message => {
+		if(message.author.bot) return;
+		if(await decompte(message.channelId.toString())){
+			let member = message.member;
+			let duration = 10*60*1000; //10 minutes
+
+			try{
+				await member.timeout(duration,"Est tombé sur une mines");
+				await message.reply(`${member.user.tag} s'est arrêter sur une bombe et a été timeout pendant 10 minutes`);
+			}catch(error){
+				console.error(error);
+     			await message.reply("❌ Impossible de mettre ce membre en timeout. Vérifie mes permissions !");
+			}
+
+		}
+	})
+
+
 
 	client.login(tokenDiscord);
 })();
