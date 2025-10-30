@@ -15,13 +15,13 @@ export default {
                 .setRequired(true)
         ),
     async execute(interaction) {
-        const pseudo = interaction.options.getString('pseudo');
-        const tag = interaction.options.getString('tag');
-        const discordId = interaction.user.id;
+        let pseudo = interaction.options.getString('pseudo');
+        let tag = interaction.options.getString('tag');
+        let discordId = interaction.user.id;
 
         try{
             //1 Récupérer l'id interne de l'utilisateur discord
-            const users = await getData('discord_users', { discord_id: discordId });
+            let users = await getData('discord_users', { discord_id: discordId });
             if(users.length === 0) {
                 await interaction.reply({
                     content: "Vous devez d'abord vous enregistrer avec la commande /register.",
@@ -29,7 +29,7 @@ export default {
                 });
                 return;
             }
-            const discordUserId = users[0].id;
+            let discordUserId = users[0].id;
 
             //2 Supprimer le compte lol lié à ce discord user
             let res = await deleteData('lol_accounts',{

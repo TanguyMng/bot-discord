@@ -10,18 +10,16 @@ import pool from './bd.js';
  */
 export async function insertData(tableName, data) {
     try {
-      const keys = Object.keys(data);
-      const values = Object.values(data);
-      const placeholders = keys.map((_, index) => `$${index + 1}`).join(', ');
+      let keys = Object.keys(data);
+      let values = Object.values(data);
+      let placeholders = keys.map((_, index) => `$${index + 1}`).join(', ');
   
-      const query = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+      let query = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`;
   
-      const result = await pool.query(query, values);
-      //console.log(`Inserted data into ${tableName}:`, result.rows[0]);
+      let result = await pool.query(query, values);
       return result.rowCount;
     } catch (err) {
       console.error('Error inserting data:', err);
-      //throw err;
     }
   }
 
@@ -35,17 +33,17 @@ export async function insertData(tableName, data) {
  */
 export async function deleteData(tableName, criteria) {
     try {
-      const keys = Object.keys(criteria);
-      const values = Object.values(criteria);
+      let keys = Object.keys(criteria);
+      let values = Object.values(criteria);
       
       // Construire la clause WHERE avec des placeholders
-      const whereClause = keys.map((key, index) => `${key} = $${index + 1}`).join(' AND ');
+      let whereClause = keys.map((key, index) => `${key} = $${index + 1}`).join(' AND ');
       
       // Construire la requête SQL
-      const query = `DELETE FROM ${tableName} WHERE ${whereClause}`;
+      let query = `DELETE FROM ${tableName} WHERE ${whereClause}`;
   
       // Exécuter la requête avec les valeurs
-      const result = await pool.query(query, values);
+      let result = await pool.query(query, values);
   
       //console.log(`Deleted ${result.rowCount} row(s) from ${tableName}.`);
       return result.rowCount;
@@ -64,17 +62,17 @@ export async function deleteData(tableName, criteria) {
  */
 export async function getData(tableName, criteria = {}) {
     try {
-      const keys = Object.keys(criteria);
-      const values = Object.values(criteria);
+      let keys = Object.keys(criteria);
+      let values = Object.values(criteria);
   
       let whereClause = '';
       if (keys.length > 0) {
         whereClause = 'WHERE ' + keys.map((key, index) => `${key} = $${index + 1}`).join(' AND ');
       }
   
-      const query = `SELECT * FROM ${tableName} ${whereClause}`;
+      let query = `SELECT * FROM ${tableName} ${whereClause}`;
   
-      const result = await pool.query(query, values);
+      let result = await pool.query(query, values);
       //console.log(`Retrieved data from ${tableName}:`, result.rows);
       return result.rows;
     } catch (err) {
@@ -93,27 +91,27 @@ export async function getData(tableName, criteria = {}) {
  */
   export async function updateData(table, updates, criteria) {
     // Construction de la chaîne de colonnes à mettre à jour
-    const updateFields = Object.keys(updates)
+    let updateFields = Object.keys(updates)
       .map((key, index) => `${key} = $${index + 1}`)
       .join(', ');
   
     // Construction de la chaîne de critères
-    const whereClauses = Object.keys(criteria)
+    let whereClauses = Object.keys(criteria)
       .map((key, index) => `${key} = $${index + 1 + Object.keys(updates).length}`)
       .join(' AND ');
   
     // Construction de la requête SQL
-    const query = `
+    let query = `
       UPDATE ${table}
       SET ${updateFields}
       WHERE ${whereClauses}
     `;
   
     // Concaténation des valeurs pour les colonnes et les critères
-    const values = [...Object.values(updates), ...Object.values(criteria)];
+    let values = [...Object.values(updates), ...Object.values(criteria)];
   
     try {
-      const res = await pool.query(query, values);
+      let res = await pool.query(query, values);
       //console.log('Données mises à jour:', res.rowCount);
       return res.rowCount; // Nombre de lignes affectées
     } catch (err) {
@@ -123,15 +121,15 @@ export async function getData(tableName, criteria = {}) {
   }
 
   export async function upsertData(table, data, conflictColumn) {
-    const columns = Object.keys(data);
-    const values = Object.values(data);
-    const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+    let columns = Object.keys(data);
+    let values = Object.values(data);
+    let placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
   
-    const updateClause = columns
+    let updateClause = columns
       .map((col, index) => `${col} = $${index + 1 + columns.length}`)
       .join(', ');
   
-    const query = `
+    let query = `
       INSERT INTO ${table} (${columns.join(', ')})
       VALUES (${placeholders})
       ON CONFLICT (${conflictColumn})

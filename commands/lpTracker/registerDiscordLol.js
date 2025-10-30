@@ -41,10 +41,10 @@ export default {
                 .setRequired(true)
         ),
     async execute(interaction) {
-        const summonerName = interaction.options.getString('playername');
-        const summonerTag = interaction.options.getString('tag');
-        const discordId = interaction.user.id;
-        const discordName = interaction.user.username;
+        let summonerName = interaction.options.getString('playername');
+        let summonerTag = interaction.options.getString('tag');
+        let discordId = interaction.user.id;
+        let discordName = interaction.user.username;
 
         try {
             // Vérification si le pseudo discord est valide
@@ -61,7 +61,7 @@ export default {
             discordUserId = users[0].id;
 
             // 2 Récupérer les infos lol 
-            const summonerInfo = await getSummonerInfo(summonerName, summonerTag);
+            let summonerInfo = await getSummonerInfo(summonerName, summonerTag);
             if (!summonerInfo) {
                 await interaction.reply('Impossible de trouver ce joueur.');
                 return;
@@ -103,7 +103,7 @@ export default {
                 tier: m_data.tier
             };
 
-            const res = await insertData('lol_accounts', lolAccount);
+            let res = await insertData('lol_accounts', lolAccount);
             if (res > 0) {
                 await interaction.reply('Compte discord et lol bien associés.');
             } else {
@@ -122,7 +122,7 @@ export default {
 
 async function getSummonerInfo(summonerName, tag) {
     try {
-        const response = await axios.get(`https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${summonerName}/${tag}?api_key=${riotAPIKey}`);
+        let response = await axios.get(`https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${summonerName}/${tag}?api_key=${riotAPIKey}`);
         return response.data;
     } catch (error) {
         console.error('Erreur lors de l\'appel à l\'API Riot dans la fonction getSummonerInfo', error);
@@ -131,7 +131,7 @@ async function getSummonerInfo(summonerName, tag) {
 }
 /*async function getOtherSummonerInfo(puuid) {
     try {
-        const response = await axios.get(`https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}?api_key=${riotAPIKey}`);
+        let response = await axios.get(`https://euw1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}?api_key=${riotAPIKey}`);
         return response.data[1];
     } catch (error) {
         console.error('Erreur lors de l\'appel à l\'API Riot dans la fonction getSummonerOtherInfo', error);
@@ -142,12 +142,12 @@ async function getSummonerInfo(summonerName, tag) {
 async function getPlayerRankAndLp(puuid) {
     
     try {
-        const url = `https://euw1.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}?api_key=${riotAPIKey}`;
-        const response = await axios.get(url);
-        const leagueEntries = response.data;
+        let url = `https://euw1.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}?api_key=${riotAPIKey}`;
+        let response = await axios.get(url);
+        let leagueEntries = response.data;
 
         // Filtrer pour les parties classées en solo/duo
-        const soloQueue = leagueEntries.find(entry => entry.queueType === 'RANKED_SOLO_5x5');
+        let soloQueue = leagueEntries.find(entry => entry.queueType === 'RANKED_SOLO_5x5');
 
         if (soloQueue) {
             m_data.lp = soloQueue.leaguePoints;
@@ -165,8 +165,8 @@ async function getPlayerRankAndLp(puuid) {
 
 async function getLastGameID(puuid){
     try {
-        const responses = await axios.get(`https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=1&api_key=${riotAPIKey}`);
-        const gameIDs = responses.data;
+        let responses = await axios.get(`https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=1&api_key=${riotAPIKey}`);
+        let gameIDs = responses.data;
         if(!Array.isArray(gameIDs) || gameIDs.length === 0){
             m_data.lastgameid = "";
             return;

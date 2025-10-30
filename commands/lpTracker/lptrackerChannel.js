@@ -12,12 +12,12 @@ export default {
                 .setRequired(true)
         ),
     async execute(interaction) {
-        const channelId = interaction.options.getString('rankchannel');
-        const guildId = interaction.guild.id;
+        let channelId = interaction.options.getString('rankchannel');
+        let guildId = interaction.guild.id;
 
         try {
             // Vérifie si un channel existe déjà pour ce serveur
-            const existing = await getData('lptracker_channels', { guild_id: guildId });
+            let existing = await getData('lptracker_channels', { guild_id: guildId });
             let res;
             if (existing.length > 0) {
                 // Mise à jour du channel pour ce serveur

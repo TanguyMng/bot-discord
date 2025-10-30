@@ -1,20 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import axios from 'axios';
 import { Client, Collection, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
-import dotenv from 'dotenv';
 import http from 'http';
 import trackingLp from './lpTracker/lptracker.js'; // Import du fichier secondaire
 import decompte from './lpTracker/sapperGame.js';
 import { pathToFileURL } from 'node:url';
-dotenv.config();
+/*import dotenv from 'dotenv';
+dotenv.config();*/
 
 
-const tokenDiscord  = process.env.tokenDiscordPrinc;
-const  riotAPIKey  = process.env.riotAPIKey;
+
 
 // Port par défaut fourni par Render
-const PORT = process.env.PORT || 3000;
+
 const __dirname = path.resolve();
 
 
@@ -25,12 +23,16 @@ const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
 
 (async () => {
-	for (const folder of commandFolders) {
-		const commandsPath = path.join(foldersPath, folder);
-		const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-		for (const file of commandFiles) {
-			const filePath = path.join(commandsPath, file);
-			const command = await import (pathToFileURL(filePath).href);
+	const PORT = process.env.PORT || 3000;
+	const tokenDiscord  = process.env.tokenDiscordPrinc;
+	const  riotAPIKey  = process.env.riotAPIKey;
+
+	for (let folder of commandFolders) {
+		let commandsPath = path.join(foldersPath, folder);
+		let commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+		for (let file of commandFiles) {
+			let filePath = path.join(commandsPath, file);
+			let command = await import (pathToFileURL(filePath).href);
 			if ('data' in command.default && 'execute' in command.default) {
 				client.commands.set(command.default.data.name, command.default);
 			} else {
@@ -56,7 +58,7 @@ const commandFolders = fs.readdirSync(foldersPath);
 
 	client.on(Events.InteractionCreate, async interaction => {
 		if (!interaction.isChatInputCommand()) return;
-		const command = interaction.client.commands.get(interaction.commandName);
+		let command = interaction.client.commands.get(interaction.commandName);
 
 		if (!command) {
 			console.error(`No command matching ${interaction.commandName} was found.`);

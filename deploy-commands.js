@@ -1,13 +1,12 @@
-import { REST, Routes } from 'discord.js';
-import dotenv from 'dotenv';
-dotenv.config();
 import fs from 'node:fs';
 import path from 'node:path';
+import { REST, Routes } from 'discord.js';
+/*import dotenv from 'dotenv';
+dotenv.config();*/
+
 
 const  tokenDiscord = process.env.tokenDiscordPrinc;
-const  riotAPIKey  = process.env.riotAPIKey;
-const  clientId  = process.env.clientIdPrinc;
-const  guildId  = process.env.guildIdPrinc;
+
 
 const commands = [];
 const __dirname = path.resolve();
@@ -37,6 +36,8 @@ const rest = new REST().setToken(tokenDiscord);
 
 // and deploy your commands!
 (async () => {
+	let  clientId  = process.env.clientIdPrinc;
+	let  guildId  = process.env.guildIdPrinc;
 	try {
 		console.log(`Started refreshing ${commands.length} application (/) commands.`);
 
