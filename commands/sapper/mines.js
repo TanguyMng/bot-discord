@@ -3,7 +3,7 @@ import { updateData, insertData, getData } from '../../database/bddFunction.js';
 
 export default {
     data: new SlashCommandBuilder()
-        .setName('mine')
+        .setName('mines')
         .addStringOption(option => 
             option.setName('nb_mines')
                 .setDescription('nombres de mines')
