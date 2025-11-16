@@ -25,7 +25,7 @@ const commandFolders = fs.readdirSync(foldersPath);
 (async () => {
 	const PORT = process.env.PORT || 3000;
 	const tokenDiscord  = process.env.tokenDiscordPrinc;
-	const  riotAPIKey  = process.env.riotAPIKey;
+	const riotAPIKey  = process.env.riotAPIKey;
 
 	for (let folder of commandFolders) {
 		let commandsPath = path.join(foldersPath, folder);
@@ -81,7 +81,7 @@ const commandFolders = fs.readdirSync(foldersPath);
 		if(message.author.bot) return;
 		if(await decompte(message.channelId.toString())){
 			let member = message.member;
-			let duration = 10*60*1000; //10 minutes
+			let duration = 5*60*1000; //5 minutes
 
 			try{
 				await member.timeout(duration,"Est tombé sur une mines");

@@ -2,11 +2,15 @@ import { SlashCommandBuilder } from 'discord.js';
 import { updateData, insertData, getData } from '../../database/bddFunction.js';
 
 export default {
-	data: new SlashCommandBuilder()
-		.setName('mine')
-		.setDescription('Pose une mine dans le salon'),
-	async execute(interaction) {
-		try{
+    data: new SlashCommandBuilder()
+        .setName('mine')
+        .addStringOption(option => 
+            option.setName('nb_mines')
+                .setDescription('nombres de mines')
+                .setRequired(true))
+        .setDescription('Pose une mine dans le salon'),
+    async execute(interaction) {
+        try{
             let max_mines = 10;
             let channel_id = interaction.channelId;
             let sapper = await getData('sapper');
@@ -17,15 +21,17 @@ export default {
                 mines = 0;
             }
             let res =1;
-            if(mines < max_mines){
-                mines = mines+1;
+            if(mines+nb_mines < max_mines){
+                mines += nb_mines;
                 res = await updateData('sapper', {mine_nb : mines}, {channel_id : channel_id});
+            }else{
+                res = 0;
             }
 
             if(res !==0){
                 await interaction.reply(`Il y a maintenant ${mines} mines dans le salon, attention à vous`);
             }else{
-                await interaction.reply('probleme, probleme engine caput');
+                await interaction.reply(`Je ne peux poser autant de mines, tu peux en poser ${max_mines-mines}`);
             }
         }catch(error){
             console.error(`Erreur dans mine.js:`, error);
@@ -35,5 +41,5 @@ export default {
             });
         }
         
-	}
+    }
 };
