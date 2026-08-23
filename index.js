@@ -1,100 +1,123 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Client, Collection, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Client, Collection, Events, GatewayIntentBits } from 'discord.js';
 import http from 'http';
-import trackingLp from './lpTracker/lptracker.js'; // Import du fichier secondaire
+import dotenv from 'dotenv';
+
+// Charger .env en premier
+dotenv.config();
+
+import trackingLp from './lpTracker/lptracker.js';
 import decompte from './lpTracker/sapperGame.js';
-import { pathToFileURL } from 'node:url';
-/*import dotenv from 'dotenv';
-dotenv.config();*/
 
+// Fix ESM __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// Validation env
+const PORT = process.env.PORT || 3000;
+const tokenDiscord = process.env.tokenDiscordPrinc;
+const riotAPIKey = process.env.riotAPIKey;
 
+if (!tokenDiscord) {
+  console.error('❌ Variable manquante: tokenDiscordPrinc');
+  process.exit(1);
+}
 
-// Port par défaut fourni par Render
+// Serveur HTTP minimal pour Render/Railway healthcheck
+// DOIT être en dehors du ready event, sinon Render timeout
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is running!');
+}).listen(PORT, () => console.log(`🌐 Healthcheck server running on port ${PORT}`));
 
-const __dirname = path.resolve();
-
-
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,], });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // Nécessaire pour le jeu des mines
+  ],
+});
 
 client.commands = new Collection();
+
+// Chargement des commandes
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
 
-(async () => {
-	const PORT = process.env.PORT || 3000;
-	const tokenDiscord  = process.env.tokenDiscordPrinc;
-	const riotAPIKey  = process.env.riotAPIKey;
+for (const folder of commandFolders) {
+  const commandsPath = path.join(foldersPath, folder);
+  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+  for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = await import(pathToFileURL(filePath).href);
+    if ('data' in command.default && 'execute' in command.default) {
+      client.commands.set(command.default.data.name, command.default);
+    } else {
+      console.log(`[WARNING] Commande ${filePath} manque data ou execute`);
+    }
+  }
+}
 
-	for (let folder of commandFolders) {
-		let commandsPath = path.join(foldersPath, folder);
-		let commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-		for (let file of commandFiles) {
-			let filePath = path.join(commandsPath, file);
-			let command = await import (pathToFileURL(filePath).href);
-			if ('data' in command.default && 'execute' in command.default) {
-				client.commands.set(command.default.data.name, command.default);
-			} else {
-				console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
-			}
-		}
-	}
+client.once(Events.ClientReady, readyClient => {
+  console.log(`✅ Ready! Logged in as ${readyClient.user.tag}`);
 
-	client.once(Events.ClientReady, readyClient => {
-		console.log(`Ready! Logged in as ${readyClient.user.tag}`);
-		//const interval = 6000; // Intervalle en millisecondes (par exemple, ici toutes les 6 secondes)
+  // Lancer le tracker seulement si la clé Riot est présente
+  if (riotAPIKey) {
+    console.log('🚀 Lancement du LP Tracker...');
+    trackingLp(client, riotAPIKey);
+  } else {
+    console.warn('⚠️ riotAPIKey manquante, LP Tracker désactivé');
+  }
+});
 
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-		// Créer un serveur web minimal
-		http.createServer((req, res) => {
-			res.writeHead(200, { 'Content-Type': 'text/plain' });
-			res.end('Bot is running!');
-		}).listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  const command = interaction.client.commands.get(interaction.commandName);
+  if (!command) {
+    console.error(`Commande ${interaction.commandName} introuvable`);
+    return;
+  }
 
-		trackingLp(client, riotAPIKey);
-	});
+  try {
+    await command.execute(interaction);
+  } catch (error) {
+    console.error(`[Interaction] Erreur sur ${interaction.commandName}:`, error);
+    const reply = { content: '❌ Erreur lors de l\'exécution de cette commande !', ephemeral: true };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(reply);
+    } else {
+      await interaction.reply(reply);
+    }
+  }
+});
 
+client.on(Events.MessageCreate, async message => {
+  if (message.author.bot) return;
 
-	client.on(Events.InteractionCreate, async interaction => {
-		if (!interaction.isChatInputCommand()) return;
-		let command = interaction.client.commands.get(interaction.commandName);
+  try {
+    if (await decompte(message.channelId.toString())) {
+      const member = message.member;
+      if (!member) return;
 
-		if (!command) {
-			console.error(`No command matching ${interaction.commandName} was found.`);
-			return;
-		}
+      const duration = 5 * 60 * 1000; // 5 minutes
+      try {
+        await member.timeout(duration, 'Est tombé sur une mine');
+        await message.reply(`💥 ${member.user.tag} a marché sur une mine et est timeout pendant 5 minutes !`);
+      } catch (error) {
+        // Manque de permissions ou rôle trop haut
+        console.error('[Mine timeout] Erreur:', error.message);
+        await message.reply('💥 BOOM ! Mais je n\'ai pas la permission de timeout ce membre. Vérifie mes rôles !');
+      }
+    }
+  } catch (error) {
+    console.error('[MessageCreate] Erreur:', error);
+  }
+});
 
-		try {
-			await command.execute(interaction);
-		} catch (error) {
-			console.error(error);
-			if (interaction.replied || interaction.deferred) {
-				await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
-			} else {
-				await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-			}
-		}
-	});
-
-	client.on("messageCreate", async message => {
-		if(message.author.bot) return;
-		if(await decompte(message.channelId.toString())){
-			let member = message.member;
-			let duration = 5*60*1000; //5 minutes
-
-			try{
-				await member.timeout(duration,"Est tombé sur une mines");
-				await message.reply(`${member.user.tag} s'est arrêter sur une bombe et a été timeout pendant 10 minutes`);
-			}catch(error){
-				console.error(error);
-     			await message.reply("❌ Impossible de mettre ce membre en timeout. Vérifie mes permissions !");
-			}
-
-		}
-	})
-
-
-
-	client.login(tokenDiscord);
-})();
+client.login(tokenDiscord).catch(err => {
+  console.error('❌ Échec login Discord:', err);
+  process.exit(1);
+});

@@ -1,147 +1,164 @@
 import pool from './bd.js';
 
+// Whitelist des tables autorisées - PROTECTION ANTI-INJECTION SQL
+const ALLOWED_TABLES = [
+  'lol_accounts',
+  'discord_users',
+  'lptracker_channels',
+  'sapper',
+  'lol_matches'
+];
+
+// Regex pour valider les noms de colonnes (lettres, chiffres, underscore)
+const COLUMN_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+function assertAllowedTable(tableName) {
+  if (!ALLOWED_TABLES.includes(tableName)) {
+    throw new Error(`Table non autorisée: ${tableName}. Tables autorisées: ${ALLOWED_TABLES.join(', ')}`);
+  }
+}
+
+function assertValidColumns(columns) {
+  for (const col of columns) {
+    if (!COLUMN_REGEX.test(col)) {
+      throw new Error(`Nom de colonne invalide: ${col}`);
+    }
+  }
+}
 
 /**
  * Insère des données dans une table.
- * 
- * @param {string} tableName - Le nom de la table.
- * @param {object} data - Les données à insérer sous forme d'objet { colonne: valeur }.
- * @returns {Promise} - Une promesse qui se résout une fois l'insertion effectuée.
+ * @returns {Object} la ligne insérée
  */
 export async function insertData(tableName, data) {
-    try {
-      let keys = Object.keys(data);
-      let values = Object.values(data);
-      let placeholders = keys.map((_, index) => `$${index + 1}`).join(', ');
-  
-      let query = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`;
-  
-      let result = await pool.query(query, values);
-      return result.rowCount;
-    } catch (err) {
-      console.error('Error inserting data:', err);
-    }
-  }
+  assertAllowedTable(tableName);
+  const keys = Object.keys(data);
+  const values = Object.values(data);
 
+  if (keys.length === 0) throw new Error('Aucune donnée à insérer');
+  assertValidColumns(keys);
+
+  const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+  const query = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+
+  try {
+    const result = await pool.query(query, values);
+    return result.rows[0];
+  } catch (err) {
+    console.error(`[DB] Erreur INSERT INTO ${tableName}:`, err.message);
+    throw err; // On propage pour que l'appelant puisse gérer (ex: duplicate key)
+  }
+}
 
 /**
- * Supprime des données d'une table en fonction des critères donnés.
- * 
- * @param {string} tableName - Le nom de la table.
- * @param {object} criteria - Les critères de suppression sous forme d'objet { colonne: valeur }.
- * @returns {Promise} - Une promesse qui se résout une fois la suppression effectuée.
+ * Supprime des données
+ * @returns {number} nombre de lignes supprimées
  */
 export async function deleteData(tableName, criteria) {
-    try {
-      let keys = Object.keys(criteria);
-      let values = Object.values(criteria);
-      
-      // Construire la clause WHERE avec des placeholders
-      let whereClause = keys.map((key, index) => `${key} = $${index + 1}`).join(' AND ');
-      
-      // Construire la requête SQL
-      let query = `DELETE FROM ${tableName} WHERE ${whereClause}`;
-  
-      // Exécuter la requête avec les valeurs
-      let result = await pool.query(query, values);
-  
-      //console.log(`Deleted ${result.rowCount} row(s) from ${tableName}.`);
-      return result.rowCount;
-    } catch (err) {
-      console.error('Error deleting data:', err);
-      //throw err;
-    }
-  }
+  assertAllowedTable(tableName);
+  const keys = Object.keys(criteria);
+  const values = Object.values(criteria);
 
-  /**
- * Récupère des données d'une table en fonction des critères donnés.
- * 
- * @param {string} tableName - Le nom de la table.
- * @param {object} [criteria] - (Facultatif) Les critères de récupération sous forme d'objet { colonne: valeur }.
- * @returns {Promise} - Une promesse qui se résout avec les données récupérées.
+  if (keys.length === 0) throw new Error('Criteria vide pour DELETE - refusé par sécurité');
+  assertValidColumns(keys);
+
+  const whereClause = keys.map((key, i) => `${key} = $${i + 1}`).join(' AND ');
+  const query = `DELETE FROM ${tableName} WHERE ${whereClause}`;
+
+  try {
+    const result = await pool.query(query, values);
+    return result.rowCount;
+  } catch (err) {
+    console.error(`[DB] Erreur DELETE FROM ${tableName}:`, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Récupère des données
+ * @returns {Array} rows
  */
 export async function getData(tableName, criteria = {}) {
-    try {
-      let keys = Object.keys(criteria);
-      let values = Object.values(criteria);
-  
-      let whereClause = '';
-      if (keys.length > 0) {
-        whereClause = 'WHERE ' + keys.map((key, index) => `${key} = $${index + 1}`).join(' AND ');
-      }
-  
-      let query = `SELECT * FROM ${tableName} ${whereClause}`;
-  
-      let result = await pool.query(query, values);
-      //console.log(`Retrieved data from ${tableName}:`, result.rows);
-      return result.rows;
-    } catch (err) {
-      console.error('Error retrieving data:', err);
-      //throw err;
-    }
-  }
+  assertAllowedTable(tableName);
+  const keys = Object.keys(criteria);
+  const values = Object.values(criteria);
 
-    /**
- * met à jour les des données d'une table en fonction des critères de selection donnés.
- * 
- * @param {string} table - Le nom de la table.
- * @param {object} updates - objet contenant les colonnes à mettre à jour et leurs nouvelles valeurs 
- * @param {object} [criteria] - (Facultatif) Les critères de récupération sous forme d'objet { colonne: valeur }.
- * @returns {Promise} - Une promesse qui se résout avec les données récupérées.
+  if (keys.length > 0) assertValidColumns(keys);
+
+  const whereClause = keys.length > 0
+    ? ' WHERE ' + keys.map((key, i) => `${key} = $${i + 1}`).join(' AND ')
+    : '';
+
+  const query = `SELECT * FROM ${tableName}${whereClause}`;
+
+  try {
+    const result = await pool.query(query, values);
+    return result.rows;
+  } catch (err) {
+    console.error(`[DB] Erreur SELECT FROM ${tableName}:`, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Met à jour des données
+ * @returns {number} nombre de lignes affectées
  */
-  export async function updateData(table, updates, criteria) {
-    // Construction de la chaîne de colonnes à mettre à jour
-    let updateFields = Object.keys(updates)
-      .map((key, index) => `${key} = $${index + 1}`)
-      .join(', ');
-  
-    // Construction de la chaîne de critères
-    let whereClauses = Object.keys(criteria)
-      .map((key, index) => `${key} = $${index + 1 + Object.keys(updates).length}`)
-      .join(' AND ');
-  
-    // Construction de la requête SQL
-    let query = `
-      UPDATE ${table}
-      SET ${updateFields}
-      WHERE ${whereClauses}
-    `;
-  
-    // Concaténation des valeurs pour les colonnes et les critères
-    let values = [...Object.values(updates), ...Object.values(criteria)];
-  
-    try {
-      let res = await pool.query(query, values);
-      //console.log('Données mises à jour:', res.rowCount);
-      return res.rowCount; // Nombre de lignes affectées
-    } catch (err) {
-      console.error('Erreur de mise à jour des données:', err);
-      //throw err;
-    }
+export async function updateData(table, updates, criteria) {
+  assertAllowedTable(table);
+  const updateKeys = Object.keys(updates);
+  const criteriaKeys = Object.keys(criteria);
+
+  if (updateKeys.length === 0) throw new Error('Aucune colonne à mettre à jour');
+  if (criteriaKeys.length === 0) throw new Error('Criteria vide pour UPDATE - refusé par sécurité');
+
+  assertValidColumns([...updateKeys, ...criteriaKeys]);
+
+  const updateFields = updateKeys.map((key, i) => `${key} = $${i + 1}`).join(', ');
+  const whereClauses = criteriaKeys.map((key, i) => `${key} = $${i + 1 + updateKeys.length}`).join(' AND ');
+
+  const query = `UPDATE ${table} SET ${updateFields} WHERE ${whereClauses}`;
+  const values = [...Object.values(updates), ...Object.values(criteria)];
+
+  try {
+    const res = await pool.query(query, values);
+    return res.rowCount;
+  } catch (err) {
+    console.error(`[DB] Erreur UPDATE ${table}:`, err.message);
+    throw err;
+  }
+}
+
+/**
+ * Upsert sécurisé
+ */
+export async function upsertData(table, data, conflictColumn) {
+  assertAllowedTable(table);
+  if (!COLUMN_REGEX.test(conflictColumn)) {
+    throw new Error(`Colonne de conflit invalide: ${conflictColumn}`);
   }
 
-  export async function upsertData(table, data, conflictColumn) {
-    let columns = Object.keys(data);
-    let values = Object.values(data);
-    let placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
-  
-    let updateClause = columns
-      .map((col, index) => `${col} = $${index + 1 + columns.length}`)
-      .join(', ');
-  
-    let query = `
-      INSERT INTO ${table} (${columns.join(', ')})
-      VALUES (${placeholders})
-      ON CONFLICT (${conflictColumn})
-      DO UPDATE SET ${updateClause};
-    `;
-  
-    try {
-      //await pool.query(query, values);
-      await pool.query(query, [...values, ...values]);
-      console.log('Données insérées ou mises à jour avec succès.');
-    } catch (err) {
-      console.error('Erreur lors de l\'insertion ou de la mise à jour :', err);
-      //throw err;
-    }
+  const columns = Object.keys(data);
+  const values = Object.values(data);
+
+  assertValidColumns(columns);
+
+  const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+  const updateClause = columns.map((col, i) => `${col} = $${i + 1 + columns.length}`).join(', ');
+
+  const query = `
+    INSERT INTO ${table} (${columns.join(', ')})
+    VALUES (${placeholders})
+    ON CONFLICT (${conflictColumn})
+    DO UPDATE SET ${updateClause}
+    RETURNING *;
+  `;
+
+  try {
+    const result = await pool.query(query, [...values, ...values]);
+    return result.rows[0];
+  } catch (err) {
+    console.error(`[DB] Erreur UPSERT ${table}:`, err.message);
+    throw err;
   }
+}
