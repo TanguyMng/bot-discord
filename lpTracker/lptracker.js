@@ -197,7 +197,6 @@ async function getPlayerRankAndLp(puuid, riotKey, lastLp, lastTier, lastRank, m_
       m_data.lp = (100 - lastLp) + m_data.lpGeneral;
     } else {
       // Relégation : ex 10 LP Gold -> 75 LP Silver = - (10 + (100-75)) = -35
-      // BUG ORIGINAL CORRIGÉ ICI : il manquait le signe négatif
       m_data.promotion = 'down';
       m_data.lp = -((100 - m_data.lpGeneral) + lastLp);
     }
@@ -276,7 +275,7 @@ function createGameResultsEmbed(m_data) {
   }
 
   const embed = new EmbedBuilder()
-    .setAuthor({ name: 'Pablo • LP Tracker', iconURL: 'https://ddragon.leagueoflegends.com/cdn/14.23.1/img/profileicon/29.png' })
+    .setAuthor({ name: 'Pablo • LP Tracker', iconURL: '../images/ppDiscord.png' })
     .setTitle(isWin ? '✅ Victory' : '❌ Defeat')
     .setDescription(description)
     .setColor(m_data.color || (isWin ? '#00FF88' : '#FF4444'))
