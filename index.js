@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Client, Collection, Events, GatewayIntentBits } from 'discord.js';
 import http from 'http';
 import dotenv from 'dotenv';
+import startEsportTracker from './esport/esportTracker.js';
 
 // Charger .env en premier
 dotenv.config();
@@ -63,6 +64,7 @@ for (const folder of commandFolders) {
 client.once(Events.ClientReady, readyClient => {
   console.log(`✅ Ready! Logged in as ${readyClient.user.tag}`);
 
+  startEsportTracker(client);
   // Lancer le tracker seulement si la clé Riot est présente
   if (riotAPIKey) {
     console.log('🚀 Lancement du LP Tracker...');
