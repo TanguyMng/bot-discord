@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -6,8 +7,6 @@ import http from 'http';
 import dotenv from 'dotenv';
 import startEsportTracker from './esport/esportTracker.js';
 
-// Charger .env en premier
-dotenv.config();
 
 import trackingLp from './lpTracker/lptracker.js';
 import decompte from './lpTracker/sapperGame.js';

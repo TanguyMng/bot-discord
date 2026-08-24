@@ -1,16 +1,34 @@
 import pkg from 'pg';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const { Pool } = pkg;
 
-if (!process.env.DATABASE_URL) {
-  console.error('❌ DATABASE_URL manquant dans le .env');
-  console.error('Va sur Railway > Postgres > Variables > copie DATABASE_URL');
-  throw new Error('DATABASE_URL manquant');
+function getDatabaseUrl() {
+  // Railway peut fournir DATABASE_URL, DATABASE_PRIVATE_URL, POSTGRES_URL, etc.
+  return (
+    process.env.DATABASE_URL ||
+    process.env.DATABASE_PRIVATE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRIVATE_URL ||
+    process.env.DATABASE_PUBLIC_URL
+  );
 }
 
+const databaseUrl = getDatabaseUrl();
+
+if (!databaseUrl) {
+  console.error('❌ Aucune URL de DB trouvée !');
+  console.error('Variables disponibles:', Object.keys(process.env).filter(k => k.toLowerCase().includes('database') || k.toLowerCase().includes('postgres') || k.toLowerCase().includes('pg')));
+  console.error('');
+  console.error('Sur Railway, va dans:');
+  console.error('1. Ton service BOT > Variables > Vérifie que DATABASE_URL existe et est résolue (pas ${{...}} en brut)');
+  console.error('2. Si tu vois ${{Postgres.DATABASE_URL}} en brut, le nom du service est faux.');
+  console.error('   Clique sur le service Postgres en haut, regarde son nom exact (ex: postgres, Postgres, postgresql)');
+  console.error('   Puis dans ton service BOT > Variables > Edit DATABASE_URL > Reference > choisis le bon service > DATABASE_URL');
+  console.error('3. Alternative: BOT > Variables > Add Reference > Service: Postgres > Variable: DATABASE_URL');
+  throw new Error('DATABASE_URL manquant - voir logs ci-dessus');
+}
+
+console.log(`✅ DATABASE_URL trouvée: ${databaseUrl.split('@')[1]?.split('/')[0] || '***'}`); // log host sans password
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Railway exige SSL en prod, mais en local selon ta config ça peut être false
