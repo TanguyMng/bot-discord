@@ -6,14 +6,14 @@ import { getSchedule, getRecentCompletedMatches, getMatchesOfCurrentWeek, format
 let isRunningResults = false;
 let isRunningCalendar = false;
 
-const CRENEAU_1 = { start: 9, end: 14 };  // LCK 09h-14h Paris (17h KST = 10h Paris)
-const CRENEAU_2 = { start: 17, end: 22 }; // LEC 17h-22h
-const DELAY_MATCH = 10 * 60 * 1000; // 10 min pendant matchs
-const DELAY_NIGHT = 60 * 60 * 1000; // 1h nuit
+const CRENEAU_1 = { start: 9, end: 14 };  // LCK
+const CRENEAU_2 = { start: 17, end: 22 }; // LEC + Majors
+const DELAY_MATCH = 10 * 60 * 1000;
+const DELAY_NIGHT = 60 * 60 * 1000;
 const RESULT_LOOKBACK_HOURS = 2;
 
 export default function startEsportTracker(client) {
-  console.log('🎮 Esport Tracker V4.1 - Calendriers séparés par ligue + ping rôles');
+  console.log('🎮 Esport Tracker V5 - 2 channels séparés (calendrier / résultats) + ping rôles');
   ensureTables();
   setTimeout(() => { checkAndPostCalendar(client); checkAndPostResults(client); }, 10000);
   setInterval(() => {
@@ -43,13 +43,13 @@ function scheduleNextResultsCheck(client) {
 async function ensureTables() {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS esport_channels (channel_id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
+      CREATE TABLE IF NOT EXISTS esport_channels (channel_id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'both' CHECK (type IN ('calendar','results','both')), created_at TIMESTAMPTZ DEFAULT NOW());
       CREATE TABLE IF NOT EXISTS esport_posted_results (match_id TEXT PRIMARY KEY, league_name TEXT, posted_at TIMESTAMPTZ DEFAULT NOW());
-      CREATE TABLE IF NOT EXISTS esport_roles (guild_id TEXT NOT NULL, league_name TEXT NOT NULL, role_id TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (guild_id, league_name));
+      CREATE TABLE IF NOT EXISTS esport_roles (guild_id TEXT NOT NULL, league_name TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY (guild_id, league_name));
+      ALTER TABLE esport_channels ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'both';
     `);
   } catch {}
 }
-
 function extractWeekLabel(matches) {
   for (const m of matches) {
     if (m.blockName && m.blockName.toLowerCase().includes('week')) {
@@ -66,7 +66,6 @@ function extractWeekLabel(matches) {
   const weekNum = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   return `Week ${weekNum}`;
 }
-
 async function getRoleMentions(guildId, leagueNames) {
   try {
     const res = await pool.query(`SELECT league_name, role_id FROM esport_roles WHERE guild_id = $1`, [guildId]);
@@ -74,10 +73,7 @@ async function getRoleMentions(guildId, leagueNames) {
     const lowerWanted = leagueNames.map(n => n.toLowerCase());
     for (const row of res.rows) {
       const rowLower = row.league_name.toLowerCase();
-      const isWanted = lowerWanted.some(w => 
-        rowLower === w || rowLower.includes(w) || w.includes(rowLower) ||
-        (w === 'world' && rowLower === 'worlds') || (w === 'worlds' && rowLower === 'world')
-      );
+      const isWanted = lowerWanted.some(w => rowLower === w || rowLower.includes(w) || w.includes(rowLower) || (w === 'world' && rowLower === 'worlds') || (w === 'worlds' && rowLower === 'world'));
       if (isWanted) mentions.push(`<@&${row.role_id}>`);
     }
     return [...new Set(mentions)].join(' ');
@@ -88,21 +84,33 @@ function getRoleIdsFromMentions(str) {
   return [...str.matchAll(/<@&(\d+)>/g)].map(m => m[1]);
 }
 
-// --- CALENDRIER SÉPARÉ PAR LIGUE ---
+// Récupère les channels par type (calendar / results) + compatibilité ancienne version (both)
+async function getChannelsByType(type) {
+  try {
+    const all = await getData('esport_channels');
+    return all.filter(c => c.type === type || c.type === 'both' || !c.type);
+  } catch {
+    return [];
+  }
+}
+
+// --- CALENDRIER SÉPARÉ PAR LIGUE, DANS CHANNELS CALENDAR UNIQUEMENT ---
 
 async function checkAndPostCalendar(client) {
   if (isRunningCalendar) return;
   isRunningCalendar = true;
   try {
-    console.log('[Esport] Calendrier hebdo séparé par ligue...');
+    console.log('[Esport] Calendrier hebdo séparé par ligue (channels calendar)...');
     const events = await getSchedule(ALL_LEAGUE_IDS);
     const weekMatches = getMatchesOfCurrentWeek(events);
     if (weekMatches.length === 0) return;
 
-    const channels = await getData('esport_channels');
-    if (channels.length === 0) return;
+    const calendarChannels = await getChannelsByType('calendar');
+    if (calendarChannels.length === 0) {
+      console.log('[Esport] Aucun channel calendar configuré. Utilise /esport-setup calendar_channel:#xxx');
+      return;
+    }
 
-    // Groupe par ligue
     const byLeague = {};
     weekMatches.forEach(e => {
       const fmt = formatMatch(e);
@@ -110,8 +118,7 @@ async function checkAndPostCalendar(client) {
       byLeague[fmt.leagueName].push(fmt);
     });
 
-    // Pour chaque channel, on poste UN MESSAGE PAR LIGUE (pas tout en même temps)
-    for (const channelRow of channels) {
+    for (const channelRow of calendarChannels) {
       try {
         const channel = await client.channels.fetch(channelRow.channel_id);
         if (!channel?.isTextBased()) continue;
@@ -132,31 +139,27 @@ async function checkAndPostCalendar(client) {
           for (const m of sorted) {
             const d = m.startTime.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', minute: '2-digit' });
             const s = m.state === 'completed' ? '✅' : m.state === 'inProgress' ? '🔴 LIVE' : '⏳';
-            // BO3 entre parenthèses, pas de Week 5 dans la ligne
             desc += `${s} \`${d}\` **${m.team1Code} vs ${m.team2Code} (BO${m.bestOf})**\n`;
           }
-
           embed.setDescription(desc || 'Aucun match');
 
-          // Envoie 1 message par ligue avec son propre ping
           await channel.send({
             content: roleMentions ? `${roleMentions} 📅 Calendrier ${leagueName} !` : undefined,
             embeds: [embed],
             allowedMentions: { roles: getRoleIdsFromMentions(roleMentions) }
           });
-
-          await new Promise(r => setTimeout(r, 1000)); // 1s entre chaque ligue pour pas spam
+          await new Promise(r => setTimeout(r, 1000));
         }
-
       } catch (err) {
         console.error(`[Esport] Calendrier ${channelRow.channel_id}:`, err.message);
       }
     }
-
   } catch (err) {
     console.error('[Esport] Calendrier:', err.message);
   } finally { isRunningCalendar = false; }
 }
+
+// --- RESULTATS DANS CHANNELS RESULTS UNIQUEMENT ---
 
 async function checkAndPostResults(client) {
   if (isRunningResults) return;
@@ -165,14 +168,18 @@ async function checkAndPostResults(client) {
     const events = await getSchedule(ALL_LEAGUE_IDS);
     const recent = getRecentCompletedMatches(events, RESULT_LOOKBACK_HOURS);
     if (recent.length === 0) return;
-    const channels = await getData('esport_channels');
-    if (channels.length === 0) return;
+
+    const resultsChannels = await getChannelsByType('results');
+    if (resultsChannels.length === 0) {
+      console.log('[Esport] Aucun channel results configuré. Utilise /esport-setup results_channel:#xxx');
+      return;
+    }
 
     for (const event of recent) {
       const fmt = formatMatch(event);
       if (await isAlreadyPosted(fmt.id)) continue;
 
-      for (const channelRow of channels) {
+      for (const channelRow of resultsChannels) {
         try {
           const channel = await client.channels.fetch(channelRow.channel_id);
           if (!channel?.isTextBased()) continue;
