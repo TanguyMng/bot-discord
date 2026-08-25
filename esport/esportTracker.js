@@ -50,6 +50,7 @@ async function ensureTables() {
       CREATE TABLE IF NOT EXISTS esport_channels (channel_id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'both' CHECK (type IN ('calendar','results','both')), created_at TIMESTAMPTZ DEFAULT NOW());
       CREATE TABLE IF NOT EXISTS esport_posted_results (match_id TEXT PRIMARY KEY, league_name TEXT, posted_at TIMESTAMPTZ DEFAULT NOW());
       CREATE TABLE IF NOT EXISTS esport_roles (guild_id TEXT NOT NULL, league_name TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY (guild_id, league_name));
+      CREATE TABLE IF NOT EXISTS esport_posted_calendars (week_id TEXT NOT NULL, league_name TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, posted_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY (week_id, league_name, guild_id));
       ALTER TABLE esport_channels ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'both';
     `);
   } catch {}
@@ -69,6 +70,15 @@ function extractWeekLabel(matches) {
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   const weekNum = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   return `Week ${weekNum}`;
+}
+function getWeekId() {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${weekNum}`;
 }
 async function getRoleMentions(guildId, leagueNames) {
   try {
@@ -98,22 +108,40 @@ async function getChannelsByType(type) {
   }
 }
 
+// --- vérifie si calendrier déjà posté cette semaine ---
+async function isCalendarAlreadyPosted(weekId, leagueName, guildId) {
+  try {
+    const res = await pool.query(
+      'SELECT 1 FROM esport_posted_calendars WHERE week_id = $1 AND league_name = $2 AND guild_id = $3',
+      [weekId, leagueName, guildId]
+    );
+    return res.rows.length > 0;
+  } catch { return false; }
+}
+async function markCalendarAsPosted(weekId, leagueName, guildId, channelId) {
+  try {
+    await pool.query(
+      `INSERT INTO esport_posted_calendars (week_id, league_name, guild_id, channel_id) 
+       VALUES ($1, $2, $3, $4) ON CONFLICT (week_id, league_name, guild_id) DO NOTHING`,
+      [weekId, leagueName, guildId, channelId]
+    );
+  } catch {}
+}
+
 // --- CALENDRIER SÉPARÉ PAR LIGUE, DANS CHANNELS CALENDAR UNIQUEMENT ---
 
-async function checkAndPostCalendar(client) {
+// --- CALENDRIER avec anti-doublon ---
+async function checkAndPostCalendar(client, checkIfAlreadyPosted = false) {
   if (isRunningCalendar) return;
   isRunningCalendar = true;
   try {
-    console.log('[Esport] Calendrier hebdo séparé par ligue (channels calendar)...');
+    console.log(`[Esport] Calendrier hebdo (check doublon: ${checkIfAlreadyPosted})...`);
     const events = await getSchedule(ALL_LEAGUE_IDS);
     const weekMatches = getMatchesOfCurrentWeek(events);
     if (weekMatches.length === 0) return;
 
     const calendarChannels = await getChannelsByType('calendar');
-    if (calendarChannels.length === 0) {
-      console.log('[Esport] Aucun channel calendar configuré. Utilise /esport-setup calendar_channel:#xxx');
-      return;
-    }
+    if (calendarChannels.length === 0) return;
 
     const byLeague = {};
     weekMatches.forEach(e => {
@@ -122,12 +150,23 @@ async function checkAndPostCalendar(client) {
       byLeague[fmt.leagueName].push(fmt);
     });
 
+    const weekId = getWeekId(); // ex: 2026-W34
+
     for (const channelRow of calendarChannels) {
       try {
         const channel = await client.channels.fetch(channelRow.channel_id);
         if (!channel?.isTextBased()) continue;
 
         for (const [leagueName, matches] of Object.entries(byLeague)) {
+          // Si on est au redémarrage, on vérifie si déjà posté cette semaine
+          if (checkIfAlreadyPosted) {
+            const already = await isCalendarAlreadyPosted(weekId, leagueName, channelRow.guild_id);
+            if (already) {
+              console.log(`[Esport] Calendrier ${leagueName} ${weekId} déjà posté pour guild ${channelRow.guild_id}, skip`);
+              continue;
+            }
+          }
+
           const weekLabel = extractWeekLabel(matches);
           const leagueInfo = Object.values(LEAGUES).find(l => l.name === leagueName);
           const roleMentions = await getRoleMentions(channelRow.guild_id, [leagueName]);
@@ -152,6 +191,10 @@ async function checkAndPostCalendar(client) {
             embeds: [embed],
             allowedMentions: { roles: getRoleIdsFromMentions(roleMentions) }
           });
+
+          // Marque comme posté
+          await markCalendarAsPosted(weekId, leagueName, channelRow.guild_id, channelRow.channel_id);
+
           await new Promise(r => setTimeout(r, 1000));
         }
       } catch (err) {
