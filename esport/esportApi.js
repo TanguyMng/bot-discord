@@ -25,9 +25,20 @@ export async function getSchedule(leagueIds = ALL_LEAGUE_IDS) {
     const validIds = leagueIds.filter(Boolean);
     if (validIds.length === 0) return [];
     const params = { hl: 'en-US', leagueId: validIds.join(',') };
-    const res = await axiosInstance.get('/getSchedule', { params });
-    const events = res.data?.data?.schedule?.events || [];
-    return events.filter(e => e.match);
+    const res1 = await axiosInstance.get('/getSchedule', { params });
+    const events1 = res1.data?.data?.schedule?.events || [];
+    const olderToken = res1.data?.data?.schedule?.pages?.older;
+
+    let events2 = [];
+    if (olderToken) {
+      try {
+        const res2 = await axiosInstance.get('/getSchedule', { params: { ...params, pageToken: olderToken } });
+        events2 = res2.data?.data?.schedule?.events || [];
+      } catch {}
+    }
+
+    const allEvents = [...events1, ...events2];
+    return allEvents.filter(e => e.match);
   } catch (err) {
     console.error('[EsportAPI] getSchedule error:', err.response?.status, err.message);
     throw err;
