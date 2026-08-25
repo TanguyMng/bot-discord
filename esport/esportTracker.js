@@ -20,6 +20,12 @@ export default function startEsportTracker(client) {
     checkAndPostCalendar(client); 
     checkAndPostResults(client, RESULT_LOOKBACK_STARTUP); // 24h au démarrage pour rattraper hier
   }, 10000);
+  setInterval(() => {
+    const nowParis = getParisTime();
+    if (nowParis.day === 1 && nowParis.hour === 9 && !isRunningCalendar) checkAndPostCalendar(client);
+  }, 60 * 60 * 1000);
+  scheduleNextResultsCheck(client);
+}
 
 function getParisTime() {
   const now = new Date();
