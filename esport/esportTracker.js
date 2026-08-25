@@ -11,17 +11,15 @@ const CRENEAU_2 = { start: 17, end: 22 }; // LEC + Majors
 const DELAY_MATCH = 10 * 60 * 1000;
 const DELAY_NIGHT = 60 * 60 * 1000;
 const RESULT_LOOKBACK_HOURS = 2;
+const RESULT_LOOKBACK_STARTUP = 24;
 
 export default function startEsportTracker(client) {
   console.log('🎮 Esport Tracker V5 - 2 channels séparés (calendrier / résultats) + ping rôles');
   ensureTables();
-  setTimeout(() => { checkAndPostCalendar(client); checkAndPostResults(client); }, 10000);
-  setInterval(() => {
-    const nowParis = getParisTime();
-    if (nowParis.day === 1 && nowParis.hour === 9 && !isRunningCalendar) checkAndPostCalendar(client);
-  }, 60 * 60 * 1000);
-  scheduleNextResultsCheck(client);
-}
+  setTimeout(() => { 
+    checkAndPostCalendar(client); 
+    checkAndPostResults(client, RESULT_LOOKBACK_STARTUP); // 24h au démarrage pour rattraper hier
+  }, 10000);
 
 function getParisTime() {
   const now = new Date();
@@ -161,12 +159,12 @@ async function checkAndPostCalendar(client) {
 
 // --- RESULTATS DANS CHANNELS RESULTS UNIQUEMENT ---
 
-async function checkAndPostResults(client) {
+async function checkAndPostResults(client, hours = RESULT_LOOKBACK_HOURS) {
   if (isRunningResults) return;
   isRunningResults = true;
   try {
     const events = await getSchedule(ALL_LEAGUE_IDS);
-    const recent = getRecentCompletedMatches(events, RESULT_LOOKBACK_HOURS);
+    const recent = getRecentCompletedMatches(events, hours);
     if (recent.length === 0) return;
 
     const resultsChannels = await getChannelsByType('results');
